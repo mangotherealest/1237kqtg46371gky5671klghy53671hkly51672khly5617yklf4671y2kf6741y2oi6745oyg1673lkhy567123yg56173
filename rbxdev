@@ -1,282 +1,309 @@
--- Obstacle Course Game Script for Roblox
--- This script manages an obstacle course with multiple levels, scoring, and player progression
+-- DropperScript
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local ServerStorage = game:GetService("ServerStorage")
-local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+local SoundService = game:GetService("SoundService")
 
--- Configuration Variables
-local LEVELS = {
-	{
-		Name = "Beginner Hills",
-		Difficulty = 1,
-		TimeLimit = 60,
-		Reward = 100,
-		SpawnPoint = Vector3.new(0, 50, 0),
-		EndPoint = Vector3.new(100, 50, 100)
-	},
-	{
-		Name = "Jumping Platforms",
-		Difficulty = 2,
-		TimeLimit = 90,
-		Reward = 200,
-		SpawnPoint = Vector3.new(150, 50, 150),
-		EndPoint = Vector3.new(250, 50, 250)
-	},
-	{
-		Name = "Lava Maze",
-		Difficulty = 3,
-		TimeLimit = 120,
-		Reward = 300,
-		SpawnPoint = Vector3.new(300, 50, 300),
-		EndPoint = Vector3.new(400, 50, 400)
-	}
+-- References to parts and folders
+local DropTemplate = ReplicatedStorage:WaitForChild("Drop")
+local Dropper = Workspace:WaitForChild("Dropper"):WaitForChild("Dropper")
+local CashFolder = Workspace:WaitForChild("Cash")
+
+-- Function to spawn a Drop part
+local function spawnDrop()
+	local newDrop = DropTemplate:Clone()
+	-- Spawn at the specified CFrame position
+	newDrop.Position = Vector3.new(25.416, 10.653, -31.9)
+	newDrop.Parent = Workspace
+
+	-- Ensure the Drop part can detect touches properly with physics
+	if newDrop:IsA("BasePart") then
+		newDrop.CanCollide = true -- Ensure it can collide for physics interaction
+		newDrop.Anchored = false -- Ensure it falls due to gravity
+	end
+
+	-- Add a touch detection to the Drop part
+	newDrop.Touched:Connect(function(hit)
+		-- Check if the touched part is directly within the Cash folder or a descendant
+		if hit and hit:IsDescendantOf(CashFolder) then
+			-- Play sound when touched
+			local sound = Instance.new("Sound")
+			sound.SoundId = "rbxassetid://307631257"
+			sound.Volume = 0.5 -- Adjust volume as needed (0 to 1)
+			sound.Parent = SoundService
+			sound:Play()
+			sound.Ended:Connect(function()
+				sound:Destroy() -- Clean up the sound instance after it finishes playing
+			end)
+
+			-- Find the player (assuming single player for simplicity)
+			local player = game.Players:GetPlayers()[1] -- Modify this logic if needed for multiplayer
+			if player then
+				local leaderstats = player:FindFirstChild("leaderstats")
+				if leaderstats then
+					local money = leaderstats:FindFirstChild("Money")
+					if money then
+						local multiplier = 1
+						local moneyMultiplier = player:FindFirstChild("MoneyMultiplier")
+						if moneyMultiplier then
+							multiplier = moneyMultiplier.Value
+						end
+						local rebirthMultiplier = player:FindFirstChild("RebirthMultiplier")
+						if rebirthMultiplier then
+							multiplier = multiplier * rebirthMultiplier.Value
+						end
+						local moneyToAdd = math.floor(10 * multiplier) -- Base 10 Money per drop, adjusted by multipliers
+						money.Value = money.Value + moneyToAdd
+						print("Added " .. moneyToAdd .. " Money to " .. player.Name .. " (Total Multiplier: " .. multiplier .. ")")
+					end
+				end
+			end
+			newDrop:Destroy() -- Destroy the Drop part only after confirmed touch with Cash part
+		end
+	end)
+
+	-- Optional: Add a failsafe to destroy the Drop part if it falls out of the map or exists too long
+	spawn(function()
+		wait(10) -- Wait for 10 seconds to see if it touches something
+		if newDrop and newDrop.Parent == Workspace then
+			newDrop:Destroy() -- Destroy if it hasn't touched anything after 10 seconds
+		end
+	end)
+end
+
+-- Spawn drops periodically (adjust the wait time as needed)
+while true do
+	spawnDrop()
+	wait(5) -- Spawn a new Drop every 5 seconds
+end
+
+
+
+
+
+
+
+
+
+-- Leaderboard
+
+local Players = game:GetService("Players")
+
+Players.PlayerAdded:Connect(function(player)
+	local leaderstats = Instance.new("Folder")
+	leaderstats.Name = "leaderstats"
+	leaderstats.Parent = player
+
+	local money = Instance.new("IntValue")
+	money.Name = "Money"
+	money.Value = 0
+	money.Parent = leaderstats
+end)
+
+
+
+
+
+
+
+
+-- upgrades
+
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+
+-- References to parts and folders
+local UpgradeFolder = Workspace:WaitForChild("Upgrade")
+local UpgradePart = UpgradeFolder:WaitForChild("Upgrade")
+
+-- Upgrade settings
+local basePrice = 50
+local priceMultiplier = 1.5
+local currentPrice = basePrice
+local moneyMultiplier = 1 -- Starts at 1x, doubles each upgrade (2x, 4x, etc.)
+
+-- Reference to BillboardGui and PriceText
+local BillboardGui = UpgradePart:WaitForChild("Price")
+local PriceText = BillboardGui:WaitForChild("PriceText")
+
+-- Function to update the displayed price
+local function updatePriceDisplay()
+	PriceText.Text = "Upgrade Cost: " .. currentPrice .. " Money"
+	PriceText.TextColor3 = Color3.new(1, 1, 1) -- White color for normal display
+end
+
+-- Initial price display
+updatePriceDisplay()
+
+-- Function to handle player touch on Upgrade part
+UpgradePart.Touched:Connect(function(hit)
+	local player = Players:GetPlayerFromCharacter(hit.Parent)
+	if player then
+		local leaderstats = player:FindFirstChild("leaderstats")
+		if leaderstats then
+			local money = leaderstats:FindFirstChild("Money")
+			if money then
+				if money.Value >= currentPrice then
+					-- Player can afford the upgrade
+					money.Value = money.Value - currentPrice
+					moneyMultiplier = moneyMultiplier * 2
+					currentPrice = math.floor(currentPrice * priceMultiplier)
+					updatePriceDisplay()
+					UpgradePart.BrickColor = BrickColor.new("Bright green") -- Visual feedback for success
+					wait(1) -- Brief visual feedback
+					UpgradePart.BrickColor = BrickColor.new("Bright green") -- Stay green after upgrade
+					-- Optionally store moneyMultiplier on the player if needed for other scripts
+					local multiplierValue = player:FindFirstChild("MoneyMultiplier")
+					if not multiplierValue then
+						multiplierValue = Instance.new("NumberValue")
+						multiplierValue.Name = "MoneyMultiplier"
+						multiplierValue.Parent = player
+					end
+					multiplierValue.Value = moneyMultiplier
+				else
+					-- Player cannot afford the upgrade
+					PriceText.Text = "Can't Afford!"
+					PriceText.TextColor3 = Color3.new(1, 0, 0) -- Red color for "Can't Afford"
+					UpgradePart.BrickColor = BrickColor.new("Bright red")
+					wait(1) -- Brief visual feedback
+					UpgradePart.BrickColor = BrickColor.new("Bright green") -- Return to green after red
+					updatePriceDisplay()
+				end
+			end
+		end
+	end
+end)
+
+
+
+
+
+
+
+
+
+
+
+-- Player Data Handler
+local DataStoreService = game:GetService("DataStoreService")
+local Players = game:GetService("Players")
+
+-- Data store for player progress
+local PlayerDataStore = DataStoreService:GetDataStore("TycoonProgress_V1")
+
+-- Default player data structure
+local defaultData = {
+	Money = 0,
+	DropperLevel = 1,
+	DropperSpeed = 1,
+	DropperValue = 1,
+	Rebirths = 0
 }
 
-local CHECKPOINT_INTERVAL = 30 -- Time in seconds between checkpoints
-local GRAVITY_MULTIPLIER = 1 -- Normal gravity
-local JUMP_BOOST = 1 -- Normal jump height
+-- Table to store active player data
+local playerData = {}
 
--- Data Storage
-local PlayerData = {}
+-- Function to load player data
+function loadPlayerData(player)
+	local userId = player.UserId
+	local success, data = pcall(function()
+		return PlayerDataStore:GetAsync(userId)
+	end)
 
--- Remote Events for Client-Server Communication
-local UpdatePlayerUI = ReplicatedStorage:WaitForChild("UpdatePlayerUI")
-local PlayerFinishedLevel = ReplicatedStorage:WaitForChild("PlayerFinishedLevel")
-
--- Create Remote Events if they don't exist
-if not UpdatePlayerUI then
-	UpdatePlayerUI = Instance.new("RemoteEvent")
-	UpdatePlayerUI.Name = "UpdatePlayerUI"
-	UpdatePlayerUI.Parent = ReplicatedStorage
-end
-
-if not PlayerFinishedLevel then
-	PlayerFinishedLevel = Instance.new("RemoteEvent")
-	PlayerFinishedLevel.Name = "PlayerFinishedLevel"
-	PlayerFinishedLevel.Parent = ReplicatedStorage
-end
-
--- Initialize Player Data
-local function InitializePlayerData(player)
-	PlayerData[player.UserId] = {
-		CurrentLevel = 1,
-		Score = 0,
-		TimeRemaining = LEVELS[1].TimeLimit,
-		CheckpointsReached = 0,
-		HasFinished = false
-	}
-	UpdateClientUI(player)
-end
-
--- Update Client UI
-local function UpdateClientUI(player)
-	local data = PlayerData[player.UserId]
-	UpdatePlayerUI:FireClient(player, data.CurrentLevel, data.Score, data.TimeRemaining)
-end
-
--- Setup Level Obstacles
-local function SetupLevelObstacles(levelNum)
-	local level = LEVELS[levelNum]
-	local obstaclesFolder = Instance.new("Folder")
-	obstaclesFolder.Name = level.Name .. "_Obstacles"
-	obstaclesFolder.Parent = ServerStorage
-
-	-- Create different obstacles based on level
-	if level.Difficulty == 1 then
-		-- Simple hills for level 1
-		for i = 1, 5 do
-			local hill = Instance.new("Part")
-			hill.Size = Vector3.new(20, 5, 20)
-			hill.Position = Vector3.new(level.SpawnPoint.X + (i * 20), level.SpawnPoint.Y - 2.5, level.SpawnPoint.Z + 10)
-			hill.Anchored = true
-			hill.BrickColor = BrickColor.new("Bright green")
-			hill.Parent = obstaclesFolder
-		end
-	elseif level.Difficulty == 2 then
-		-- Moving platforms for level 2
-		for i = 1, 4 do
-			local platform = Instance.new("Part")
-			platform.Size = Vector3.new(10, 1, 10)
-			platform.Position = Vector3.new(level.SpawnPoint.X + (i * 25), level.SpawnPoint.Y, level.SpawnPoint.Z + 15)
-			platform.Anchored = true
-			platform.BrickColor = BrickColor.new("Bright blue")
-			platform.Parent = obstaclesFolder
-
-			-- Add tweening for movement
-			local tweenInfo = TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
-			local tween = TweenService:Create(platform, tweenInfo, {Position = Vector3.new(platform.Position.X, platform.Position.Y + 5, platform.Position.Z)})
-			tween:Play()
-		end
-	elseif level.Difficulty == 3 then
-		-- Lava maze for level 3
-		local lava = Instance.new("Part")
-		lava.Size = Vector3.new(80, 1, 80)
-		lava.Position = Vector3.new(level.SpawnPoint.X + 40, level.SpawnPoint.Y - 5, level.SpawnPoint.Z + 40)
-		lava.Anchored = true
-		lava.BrickColor = BrickColor.new("Bright red")
-		lava.Parent = obstaclesFolder
-
-		-- Add safe paths
-		for i = 1, 3 do
-			local path = Instance.new("Part")
-			path.Size = Vector3.new(5, 1, 20)
-			path.Position = Vector3.new(level.SpawnPoint.X + 20 + (i * 10), level.SpawnPoint.Y - 1, level.SpawnPoint.Z + 40)
-			path.Anchored = true
-			path.BrickColor = BrickColor.new("Bright yellow")
-			path.Parent = obstaclesFolder
-		end
+	if success and data then
+		playerData[userId] = data
+		print("Loaded data for " .. player.Name)
+	else
+		playerData[userId] = defaultData
+		print("Created new data for " .. player.Name)
 	end
 
-	return obstaclesFolder
+	-- Set up leaderstats
+	local leaderstats = Instance.new("Folder")
+	leaderstats.Name = "leaderstats"
+	leaderstats.Parent = player
+
+	local money = Instance.new("IntValue")
+	money.Name = "Money"
+	money.Value = playerData[userId].Money
+	money.Parent = leaderstats
+
+	local rebirths = Instance.new("IntValue")
+	rebirths.Name = "Rebirths"
+	rebirths.Value = playerData[userId].Rebirths
+	rebirths.Parent = leaderstats
 end
 
--- Setup All Levels
-local function SetupAllLevels()
-	for i = 1, #LEVELS do
-		SetupLevelObstacles(i)
-	end
-end
+-- Function to save player data
+function savePlayerData(userId)
+	if playerData[userId] then
+		local success, err = pcall(function()
+			PlayerDataStore:SetAsync(userId, playerData[userId])
+		end)
 
--- Load Level for Player
-local function LoadLevelForPlayer(player, levelNum)
-	local level = LEVELS[levelNum]
-	local playerData = PlayerData[player.UserId]
-	playerData.CurrentLevel = levelNum
-	playerData.TimeRemaining = level.TimeLimit
-	playerData.CheckpointsReached = 0
-	playerData.HasFinished = false
-
-	-- Teleport player to level start
-	if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-		player.Character.HumanoidRootPart.CFrame = CFrame.new(level.SpawnPoint)
-	end
-
-	UpdateClientUI(player)
-end
-
--- Handle Player Death
-local function HandlePlayerDeath(player)
-	local playerData = PlayerData[player.UserId]
-	if playerData then
-		playerData.TimeRemaining = math.max(0, playerData.TimeRemaining - 10) -- Penalty for death
-		UpdateClientUI(player)
-		wait(2) -- Small delay before respawn
-		LoadLevelForPlayer(player, playerData.CurrentLevel)
-	end
-end
-
--- Timer Management
-local function ManageTimer(player)
-	local playerData = PlayerData[player.UserId]
-	while playerData and not playerData.HasFinished and playerData.TimeRemaining > 0 do
-		wait(1)
-		playerData.TimeRemaining -= 1
-		UpdateClientUI(player)
-
-		-- Check if player ran out of time
-		if playerData.TimeRemaining <= 0 then
-			HandlePlayerDeath(player)
-			break
-		end
-
-		-- Check for checkpoint bonus
-		if playerData.TimeRemaining % CHECKPOINT_INTERVAL == 0 then
-			playerData.CheckpointsReached += 1
-			playerData.Score += 10
-			UpdateClientUI(player)
-		end
-	end
-end
-
--- Handle Level Completion
-local function HandleLevelCompletion(player)
-	local playerData = PlayerData[player.UserId]
-	if not playerData.HasFinished then
-		playerData.HasFinished = true
-		playerData.Score += LEVELS[playerData.CurrentLevel].Reward
-		UpdateClientUI(player)
-
-		if playerData.CurrentLevel < #LEVELS then
-			wait(3)
-			LoadLevelForPlayer(player, playerData.CurrentLevel + 1)
-			ManageTimer(player)
+		if success then
+			print("Saved data for user " .. userId)
 		else
-			-- Player completed all levels
-			UpdatePlayerUI:FireClient(player, 0, playerData.Score, 0, true)
+			warn("Failed to save data for user " .. userId .. ": " .. tostring(err))
 		end
 	end
 end
 
--- Player Added Connection
-Players.PlayerAdded:Connect(function(player)
-	InitializePlayerData(player)
-	LoadLevelForPlayer(player, 1)
-	ManageTimer(player)
-
-	-- Connect character death
-	player.CharacterAdded:Connect(function(character)
-		character.Humanoid.Died:Connect(function()
-			HandlePlayerDeath(player)
-		end)
-	end)
-end)
-
--- Player Removing Connection
-Players.PlayerRemoving:Connect(function(player)
-	PlayerData[player.UserId] = nil
-end)
-
--- Handle Client Level Completion
-PlayerFinishedLevel.OnServerEvent:Connect(function(player)
-	HandleLevelCompletion(player)
-end)
-
--- Initial Setup
-SetupAllLevels()
-
--- Create End Zones for Each Level
-for i, level in ipairs(LEVELS) do
-	local endZone = Instance.new("Part")
-	endZone.Size = Vector3.new(10, 1, 10)
-	endZone.Position = level.EndPoint
-	endZone.Anchored = true
-	endZone.BrickColor = BrickColor.new("Bright green")
-	endZone.Transparency = 0.5
-	endZone.CanCollide = false
-	endZone.Parent = workspace
-
-	local touchDetector = Instance.new("TouchTransmitter")
-	touchDetector.Parent = endZone
-
-	endZone.Touched:Connect(function(hit)
-		local player = Players:GetPlayerFromCharacter(hit.Parent)
-		if player and PlayerData[player.UserId] and PlayerData[player.UserId].CurrentLevel == i then
-			HandleLevelCompletion(player)
-		end
-	end)
-end
-
--- Create Lava Death Zones
-for i, level in ipairs(LEVELS) do
-	if level.Difficulty == 3 then -- Only for lava level
-		local lavaZone = Instance.new("Part")
-		lavaZone.Size = Vector3.new(80, 2, 80)
-		lavaZone.Position = Vector3.new(level.SpawnPoint.X + 40, level.SpawnPoint.Y - 6, level.SpawnPoint.Z + 40)
-		lavaZone.Anchored = true
-		lavaZone.BrickColor = BrickColor.new("Bright red")
-		lavaZone.Transparency = 0.3
-		lavaZone.CanCollide = false
-		lavaZone.Parent = workspace
-
-		lavaZone.Touched:Connect(function(hit)
-			local player = Players:GetPlayerFromCharacter(hit.Parent)
-			if player then
-				HandlePlayerDeath(player)
+-- Function to update player data
+function UpdatePlayerData(userId, key, value)
+	if playerData[userId] then
+		playerData[userId][key] = value
+		-- Update leaderstats if applicable
+		local player = Players:GetPlayerByUserId(userId)
+		if player and player:FindFirstChild("leaderstats") then
+			local stat = player.leaderstats:FindFirstChild(key)
+			if stat then
+				stat.Value = value
 			end
-		end)
+		end
 	end
 end
 
-print("Obstacle Course Game Initialized!") 
+-- Connect player events
+Players.PlayerAdded:Connect(loadPlayerData)
+Players.PlayerRemoving:Connect(function(player)
+	savePlayerData(player.UserId)
+	playerData[player.UserId] = nil
+end)
+
+-- Auto-save every 5 minutes
+game:BindToClose(function()
+	for userId in pairs(playerData) do
+		savePlayerData(userId)
+	end
+end)
+
+while true do
+	wait(300) -- 5 minutes
+	for userId in pairs(playerData) do
+		savePlayerData(userId)
+	end
+	print("Auto-saved all player data")
+end
+
+-- Remote functions for client communication
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local DataRemotes = Instance.new("Folder")
+DataRemotes.Name = "DataRemotes"
+DataRemotes.Parent = ReplicatedStorage
+
+local GetData = Instance.new("RemoteFunction")
+GetData.Name = "GetData"
+GetData.Parent = DataRemotes
+
+local UpdateData = Instance.new("RemoteEvent")
+UpdateData.Name = "UpdateData"
+UpdateData.Parent = DataRemotes
+
+function GetData.OnServerInvoke(player)
+	return playerData[player.UserId]
+end
+
+UpdateData.OnServerEvent:Connect(function(player, key, value)
+	UpdatePlayerData(player.UserId, key, value)
+end) 
